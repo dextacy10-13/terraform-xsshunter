@@ -1,0 +1,26 @@
+# xsshunter.yml
+---
+- hosts: all
+  become: yes
+  become_method: sudo
+  tasks:
+    - name: "Create a challenge for {{ domain_name }} using a account key file."
+      acme_certificate:
+        acme_version: 2
+        account_key_src: /etc/pki/cert/private/account.key
+        account_email: "{{ domain_name_account_email }}"
+        src: "/etc/pki/cert/csr/{{ domain_name }}.csr"
+        cert: "/etc/httpd/ssl/{{ domain_name }}.crt"
+        challenge: dns-01
+        acme_directory: https://acme-v02.api.letsencrypt.org/directory
+        # Renew if the certificate is at least 30 days old
+        remaining_days: 60
+      register: "{{ domain_name_challenge}}"
+
+    - name: check out from git
+    - name: import nginx vhost
+    - name: import postgres (galaxy role)
+    - name: import postfix (poss want dovecot...)
+
+    #  from a baking point of view will install what software we can and config but will need
+    # image spun up with an IP to do DNS setup and then further config
