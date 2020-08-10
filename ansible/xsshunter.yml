@@ -3,7 +3,9 @@
 - hosts: all
   become: yes
   become_method: sudo
+
   tasks:
+    # this is a two stage process - create challenge and then fulfill challenge
     - name: "Create a challenge for {{ domain_name }} using a account key file."
       acme_certificate:
         acme_version: 2
@@ -11,16 +13,70 @@
         account_email: "{{ domain_name_account_email }}"
         src: "/etc/pki/cert/csr/{{ domain_name }}.csr"
         cert: "/etc/httpd/ssl/{{ domain_name }}.crt"
+        fullchain_dest: /etc/httpd/ssl/{{ domain_name }}-fullchain.crt
         challenge: dns-01
         acme_directory: https://acme-v02.api.letsencrypt.org/directory
         # Renew if the certificate is at least 30 days old
         remaining_days: 60
       register: "{{ domain_name_challenge}}"
 
-    - name: check out from git
-    - name: import nginx vhost
+     - route53:
+         zone: "{{ domain_name }}"
+         record: "{{ item.key }}"
+         type: TXT
+         ttl: 60
+         state: present
+         wait: yes
+         # Note: item.value is a list of TXT entries, and route53
+         # requires every entry to be enclosed in quotes
+         value: "{{ item.value | map('regex_replace', '^(.*)$', '\"\\1\"' ) | list }}"
+       loop: "{{ domain_name_challenge.challenge_data_dns | dictsort }}"
+       when: domain_name_challenge is changed
+
+    - name: Let the challenge be validated and retrieve the cert and intermediate certificate
+      acme_certificate:
+        account_key_src: /etc/pki/cert/private/account.key
+        account_email: "{{ domain_name_account_email }}"
+        src: "/etc/pki/cert/csr/{{ domain_name }}.csr"
+        cert: "/etc/httpd/ssl/{{ domain_name }}.crt"
+        fullchain: "/etc/httpd/ssl/{{ domain_name }}fullchain.crt"
+        chain: "/etc/httpd/ssl/{{ domain_name }}-intermediate.crt"
+        challenge: dns-01
+        acme_directory: https://acme-v02.api.letsencrypt.org/directory
+        remaining_days: 60
+        data: "{{ domain_name_challenge }}"
+      when: domain_name_challenge is changed
+
+
+
+    - name: Checkout XSSHunter from Repo
+      git:
+        repo: https://github.com/mandatoryprogrammer/xsshunter
+        dest: "/home/{{ user }}/"
+        update: yes
+        force: yes
+
+    - name: Generate XSSHunter config
+      shell: "/home/{{ user }}/generate_config.py"
+      become_user: "{{ user }}"
+
+    - name: import nginx
+
+    - name: Move XSSHunter nginx into place
+
+
+    - name: Install required packages for XSSunter API
+      become: true
+      apt: name={{ item }} state=present
+      with_items:
+        - python-virtualenv
+        - python-dev
+        - libpq-dev
+        - libffi-dev
+
     - name: import postgres (galaxy role)
-    - name: import postfix (poss want dovecot...)
+    - name: import postfix-relay (poss want dovecot...)
+    - name: import dovecot
 
     #  from a baking point of view will install what software we can and config but will need
     # image spun up with an IP to do DNS setup and then further config

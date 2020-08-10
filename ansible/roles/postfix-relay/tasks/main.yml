@@ -1,0 +1,96 @@
+---
+- include_role:
+    name: postfix
+
+- name: Install sasl2 for relay authentication configuration
+  apt: name=sasl2-bin state=present
+
+- name: Set up sasl to use sasldb for auth (there are various mechanisms it can use e.g pam) - this file may not be needed in the end!
+  template: src=templates/saslauthd.j2 dest=/etc/default/saslauthd
+  notify:
+    - restart postfix
+
+- name: /etc/postfix/header_checks
+  template: src=templates/header_checks.j2 dest=/etc/postfix/header_checks
+
+- name: adding existing user 'postfix' to group sasl
+  user:
+    name: 'postfix'
+    groups: sasl
+    append: yes
+  notify:
+  - restart postfix
+
+- name: Make sure /etc/sasl2 directory exists
+  action: file path=/etc/sasl2/ state=directory
+
+
+- name: create saslauth chrooted directories if they don't exist (and make sure owner/group set on each directory)
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: postfix
+    group: root
+    mode: 0775
+  with_items:
+    - /var/spool/postfix/var/
+    - /var/spool/postfix/var/run/
+    - /var/spool/postfix/var/run/saslauthd/
+
+- name: Tell relay clients the available authentication mechanisms
+  template: src=templates/smtpd.conf.j2 dest=/etc/sasl2/smtpd.conf
+  notify:
+  - restart postfix
+
+- name: Tell relay clients the available authentication mechanisms (belts and braces)
+  template: src=templates/smtpd.conf.j2 dest=/usr/lib/sasl2/smtpd.conf
+  notify:
+    - restart postfix
+
+- name: Tell Cyrus Sasl how it should authenticate a clients username and password - /etc/postsfix/sasl
+  template: src=templates/smtpd.conf.j2 dest=/etc/postfix/sasl/smtpd.conf
+  notify:
+  - restart postfix
+
+- name: Configure postfix.master.cf to allow sasl auth for relay
+  template: src=templates/master.cf.j2 dest=/etc/postfix/master.cf
+  notify:
+    - restart postfix
+
+- name: Configure postfix.master.cf to allow sasl for relay
+  template: src=templates/main.cf.j2 dest=/etc/postfix/main.cf
+  notify:
+    - restart postfix
+
+- name: Block known email abusers
+  template: src=templates/access.j2 dest=/etc/postfix/access
+  notify:
+    - rehash postfix access
+    - restart postfix
+
+- name: Configure header checks - Replace rather than ignore headers as causes issue with dkim
+  template: src=templates/header_checks.j2 dest=/etc/postfix/header_checks
+  notify:
+    - restart postfix
+
+- name: Create SASL users (This adds a user to /etc/sasldb2 )
+  shell: "echo {{ sasl_password }} | saslpasswd2 -p -c -u {{ domain_name }} {{ sasl_user }} "
+
+- name: Create other SASL users - if need more then do a loop (This adds a user to /etc/sasldb2)
+  shell: "echo {{ sasl_password2 }} | saslpasswd2 -p -c -u {{ domain_name }} {{ sasl_user2 }} "
+  when: postfix_othernetworks is defined
+
+- name: Make postfix owner of sasldb2
+  action: file path=/etc/sasldb2 state=file owner=postfix group=root
+
+- name: create hardlink to /etc/sasldb2 from /var/spool/postfix/etc/ as chrooted (AKA the ballache)
+  action: file src=/etc/sasldb2 dest=/var/spool/postfix/etc/sasldb2 state=hard
+  notify:
+  - restart postfix
+
+- name: Ensure saslauthd service does not startup (this is recommended when using sasldb)
+  file:
+    path: /etc/init.d/saslauthd
+    state: absent
+  notify:
+    - restart postfix

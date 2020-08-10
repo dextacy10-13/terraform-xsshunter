@@ -1,0 +1,11 @@
+---
+# Defines variables for Debian/Ubuntu
+
+postfix_config_dir: '/etc/postfix'
+postfix_service: 'postfix'
+postfix_packages:
+  - 'ca-certificates'
+  - 'libsasl2-2'
+  - 'libsasl2-modules'
+  - 'mailutils'
+  - 'postfix'

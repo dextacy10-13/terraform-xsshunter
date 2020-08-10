@@ -1,0 +1,10 @@
+---
+- name: Install dovecot for incoming email handling
+  apt: name=dovecot-core state=present
+
+- name: Install Additional Dependencies
+    apt:
+      pkg:
+        - dovecot-imapd
+        - dovecot-pop3d
+        - dovecot-antispam

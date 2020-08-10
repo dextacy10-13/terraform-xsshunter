@@ -1,0 +1,6 @@
+---
+- name: rehash postfix access
+  shell: "/usr/sbin/postmap /etc/postfix/access"
+
+- name: rehash postfix saslpassword
+  shell: "/usr/sbin/postmap hash:/etc/postfix/sasl_passwd"
