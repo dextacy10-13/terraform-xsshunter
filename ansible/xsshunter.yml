@@ -5,6 +5,33 @@
   become_method: sudo
 
   tasks:
+    - name: Install required packages for XSSunter
+      become: true
+      apt: name={{ item }} state=present
+      with_items:
+        - python-virtualenv
+        - python-dev
+        - libpq-dev
+        - libffi-dev
+        - python-psycopg2
+        - postgresql
+        - postgresql-contrib
+
+    - name: import postgres (galaxy role)
+#      sudo -i -u postgres
+#      psql template1
+#      CREATE USER xsshunter WITH PASSWORD 'EXAMPLE_PASSWORD';
+#      CREATE DATABASE xsshunter;
+#      \q
+#      exit
+    - name: Connect to xsshunter database, create user, and grant access to database
+      postgresql_user:
+        db: xsshunter
+        name: xsshunter
+        password: {{ postgres_password }}
+        priv: "CONNECT/xsshunter:ALL"
+        expires: infinity
+
     # this is a two stage process - create challenge and then fulfill challenge
     - name: "Create a challenge for {{ domain_name }} using a account key file."
       acme_certificate:
@@ -18,7 +45,7 @@
         acme_directory: https://acme-v02.api.letsencrypt.org/directory
         # Renew if the certificate is at least 30 days old
         remaining_days: 60
-      register: "{{ domain_name_challenge}}"
+      register: domain_name_challenge
 
      - route53:
          zone: "{{ domain_name }}"
@@ -47,36 +74,35 @@
         data: "{{ domain_name_challenge }}"
       when: domain_name_challenge is changed
 
-
-
     - name: Checkout XSSHunter from Repo
       git:
         repo: https://github.com/mandatoryprogrammer/xsshunter
-        dest: "/home/{{ user }}/"
+        dest: /srv/checkout/
         update: yes
         force: yes
 
-    - name: Generate XSSHunter config
-      shell: "/home/{{ user }}/generate_config.py"
-      become_user: "{{ user }}"
+    - name: Generate XSSHunter config with multiple different responses
+      expect:
+        command: /srv/checkout/xsshunter/generate_config.py
+        responses:
+          Question:
+            - "{{ domain }}"
+            - "{{ mailgun_api_key }}"
+            - "{{ mailgun_domain }}"
+            - "{{ mail_from_email }}"
+            - "{{ abuse_contact_email }}"
+            - "{{ postgres_user }}"
+            - "{{ postgres_password }}"
+            - "{{ postgres_users_db }}"
 
-    - name: import nginx
+    - import_role:
+        name: nginx
 
     - name: Move XSSHunter nginx into place
+      shell: sudo cp default /etc/nginx/sites-enabled/default
 
-
-    - name: Install required packages for XSSunter API
-      become: true
-      apt: name={{ item }} state=present
-      with_items:
-        - python-virtualenv
-        - python-dev
-        - libpq-dev
-        - libffi-dev
-
-    - name: import postgres (galaxy role)
-    - name: import postfix-relay (poss want dovecot...)
-    - name: import dovecot
+#    - name: import postfix-relay (poss want dovecot...)
+#    - name: import dovecot
 
     #  from a baking point of view will install what software we can and config but will need
     # image spun up with an IP to do DNS setup and then further config
