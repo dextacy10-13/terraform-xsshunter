@@ -22,7 +22,14 @@
       "type": "ansible",
       "extra_arguments": [
         "--extra-vars",
-        "ansible_python_interpreter=/usr/bin/python3 domain_name={{ }} domain_name_account_email={{ domain_name_account_email }}"
+        "ansible_python_interpreter=/usr/bin/python3",
+        "postgres_password={{ }}",
+        "domain_name={{ }}",
+        "domain_name_account_email={{ domain_name_account_email }}",
+        "mailgun_api_key={{  }}",
+        "mailgun_domain={{  }}",
+        "mail_from_email={{  }}",
+        "abuse_contact_email={{  }}"
       ],
       "playbook_file": "../../ansible/xsshunter.yml"
     }

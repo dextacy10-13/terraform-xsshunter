@@ -17,18 +17,22 @@
         - postgresql
         - postgresql-contrib
 
-    - name: import postgres (galaxy role)
 #      sudo -i -u postgres
 #      psql template1
 #      CREATE USER xsshunter WITH PASSWORD 'EXAMPLE_PASSWORD';
 #      CREATE DATABASE xsshunter;
 #      \q
 #      exit
+    - name: Create a new database with name "xsshunter"
+      postgresql_db:
+        name: xsshunter
+        template: template1
+
     - name: Connect to xsshunter database, create user, and grant access to database
       postgresql_user:
         db: xsshunter
         name: xsshunter
-        password: {{ postgres_password }}
+        password: "{{ postgres_password }}"
         priv: "CONNECT/xsshunter:ALL"
         expires: infinity
 
@@ -86,14 +90,14 @@
         command: /srv/checkout/xsshunter/generate_config.py
         responses:
           Question:
-            - "{{ domain }}"
+            - "{{ domain_name }}"
             - "{{ mailgun_api_key }}"
             - "{{ mailgun_domain }}"
             - "{{ mail_from_email }}"
             - "{{ abuse_contact_email }}"
-            - "{{ postgres_user }}"
+            - "xsshunter"
             - "{{ postgres_password }}"
-            - "{{ postgres_users_db }}"
+            - "xsshunter"
 
     - import_role:
         name: nginx
