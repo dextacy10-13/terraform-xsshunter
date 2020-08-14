@@ -3,19 +3,33 @@
 - hosts: all
   become: yes
   become_method: sudo
+  vars:
+    packages:
+      - python3
+      - python-is-python3
+      - python3-pip
+      - python3-setuptools
+      - python3-dev
+      - libpq-dev
+      - libffi-dev
+      - python3-psycopg2
+      - postgresql
+      - postgresql-contrib
 
   tasks:
     - name: Install required packages for XSSunter
       become: true
-      apt: name={{ item }} state=present
-      with_items:
-        - python-virtualenv
-        - python-dev
-        - libpq-dev
-        - libffi-dev
-        - python-psycopg2
-        - postgresql
-        - postgresql-contrib
+      apt:
+        pkg: "{{ packages }}"
+        state: present
+        update_cache: yes
+
+
+    - name: Install pipenv
+      become: true
+      pip:
+        name: pipenv
+        executable: pip3
 
 #      sudo -i -u postgres
 #      psql template1
@@ -51,7 +65,8 @@
         remaining_days: 60
       register: domain_name_challenge
 
-     - route53:
+    - name: Add challenge DNS record
+      route53:
          zone: "{{ domain_name }}"
          record: "{{ item.key }}"
          type: TXT
@@ -61,8 +76,8 @@
          # Note: item.value is a list of TXT entries, and route53
          # requires every entry to be enclosed in quotes
          value: "{{ item.value | map('regex_replace', '^(.*)$', '\"\\1\"' ) | list }}"
-       loop: "{{ domain_name_challenge.challenge_data_dns | dictsort }}"
-       when: domain_name_challenge is changed
+      loop: "{{ domain_name_challenge.challenge_data_dns | dictsort }}"
+      when: domain_name_challenge is changed
 
     - name: Let the challenge be validated and retrieve the cert and intermediate certificate
       acme_certificate:

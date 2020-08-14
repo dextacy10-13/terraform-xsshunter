@@ -1,7 +1,7 @@
 {
   "builders": [{
     "type": "amazon-ebs",
-    "region": "eu-west-2",
+    "region": "{{user `aws_region`}}",
     "access_key": "{{user `aws_access_key`}}",
     "secret_key": "{{user `aws_secret_key`}}",
     "source_ami_filter": {
@@ -22,16 +22,24 @@
       "type": "ansible",
       "extra_arguments": [
         "--extra-vars",
-        "ansible_python_interpreter=/usr/bin/python3",
-        "postgres_password={{ }}",
-        "domain_name={{ }}",
-        "domain_name_account_email={{ domain_name_account_email }}",
-        "mailgun_api_key={{  }}",
-        "mailgun_domain={{  }}",
-        "mail_from_email={{  }}",
-        "abuse_contact_email={{  }}"
+        "'ansible_python_interpreter=/usr/bin/python3 postgres_password={{user `postgres_password`}} domain_name={{user `domain_name`}} domain_name_account_email={{user `domain_name_account_email`}} mailgun_api_key={{user `mailgun_api_key`}} mailgun_domain={{user `mailgun_domain`}} mail_from_email={{user `mail_from_email`}} abuse_contact_email={{user `abuse_contact_email`}}'"
       ],
       "playbook_file": "../../ansible/xsshunter.yml"
+    },
+    {
+      "type":  "shell",
+      "environment_vars": [
+        "AWS_ACCESS_KEY_ID={{user `aws_access_key`}}",
+        "AWS_SECRET_ACCESS_KEY={{user `aws_secret_key`}}",
+        "AWS_REGION={{user `region`}}"
+      ],
+      "inline": [
+        "mkdir -p ~/.aws/",
+        "echo \"[default]\n\" >> ~/.aws/credentials",
+        "echo \"aws_access_key_id=${AWS_ACCESS_KEY_ID}\n\" >> ~/.aws/credentials",
+        "echo \"aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}\" >> ~/.aws/credentials",
+        "echo \"region=${AWS_REGION}\" >> ~/.aws/credentials"
+      ]
     }
   ]
 }
