@@ -10,11 +10,13 @@
       - python3-pip
       - python3-setuptools
       - python3-dev
+      - python3-acme
       - libpq-dev
       - libffi-dev
       - python3-psycopg2
       - postgresql
       - postgresql-contrib
+      - nginx
 
   tasks:
     - name: Install required packages for XSSunter
@@ -31,62 +33,101 @@
         name: pipenv
         executable: pip3
 
-#      sudo -i -u postgres
-#      psql template1
-#      CREATE USER xsshunter WITH PASSWORD 'EXAMPLE_PASSWORD';
-#      CREATE DATABASE xsshunter;
-#      \q
-#      exit
+    - name: Install boto
+      become: true
+      pip:
+        name: boto
+        executable: pip3
+
+    - name: Install boto3
+      become: true
+      pip:
+        name: boto3
+        executable: pip3
+
+    # enables set permissions to temp files to switch to posrgres user
+    - name: install setfacl support
+      become: yes
+      apt: pkg=acl
+
     - name: Create a new database with name "xsshunter"
+      become: true
+      become_user: postgres
       postgresql_db:
         name: xsshunter
         template: template1
 
     - name: Connect to xsshunter database, create user, and grant access to database
+      become: true
+      become_user: postgres
       postgresql_user:
         db: xsshunter
         name: xsshunter
         password: "{{ postgres_password }}"
-        priv: "CONNECT/xsshunter:ALL"
         expires: infinity
+
+    - import_role:
+        name: nginx
+
+    - name: ensure nginx cert key dir
+      file:
+        path: "/etc/nginx/cert/private/"
+        state: directory
+
+    - name: ensure nginx csr key dir
+      file:
+        path: "/etc/nginx/ssl/csr/"
+        state: directory
+
+    - name: Generate an OpenSSL private key with a different size (2048 bits)
+      openssl_privatekey:
+        path: "/etc/nginx/cert/private/{{ domain_name}}.key"
+        size: 2048
+
+    - name: Generate an OpenSSL Certificate Signing Request
+      openssl_csr:
+        path: "/etc/nginx/ssl/csr/{{ domain_name}}.csr"
+        privatekey_path: "/etc/nginx/cert/private/{{ domain_name}}.key"
+        common_name: "{{ domain_name}}"
 
     # this is a two stage process - create challenge and then fulfill challenge
     - name: "Create a challenge for {{ domain_name }} using a account key file."
       acme_certificate:
         acme_version: 2
-        account_key_src: /etc/pki/cert/private/account.key
+        account_key_src: "/etc/nginx/cert/private/{{ domain_name}}.key"
         account_email: "{{ domain_name_account_email }}"
-        src: "/etc/pki/cert/csr/{{ domain_name }}.csr"
-        cert: "/etc/httpd/ssl/{{ domain_name }}.crt"
-        fullchain_dest: /etc/httpd/ssl/{{ domain_name }}-fullchain.crt
+        src: "/etc/nginx/ssl/csr/{{ domain_name}}.csr"
+        cert: "/etc/nginx/ssl/{{ domain_name }}.crt"
+        fullchain_dest: "/etc/nginx/ssl/{{ domain_name }}-fullchain.crt"
         challenge: dns-01
         acme_directory: https://acme-v02.api.letsencrypt.org/directory
+        terms_agreed: yes
         # Renew if the certificate is at least 30 days old
         remaining_days: 60
       register: domain_name_challenge
 
     - name: Add challenge DNS record
+      become: true
       route53:
          zone: "{{ domain_name }}"
-         record: "{{ item.key }}"
+         record: "{{ domain_name_challenge.challenge_data[ domain_name ]['dns-01'].record }}"
          type: TXT
          ttl: 60
          state: present
          wait: yes
          # Note: item.value is a list of TXT entries, and route53
          # requires every entry to be enclosed in quotes
-         value: "{{ item.value | map('regex_replace', '^(.*)$', '\"\\1\"' ) | list }}"
-      loop: "{{ domain_name_challenge.challenge_data_dns | dictsort }}"
+         value: "{{ domain_name_challenge.challenge_data[ domain_name ]['dns-01'].resource_value | regex_replace('^(.*)$', '\"\\1\"') }}"
       when: domain_name_challenge is changed
 
     - name: Let the challenge be validated and retrieve the cert and intermediate certificate
       acme_certificate:
-        account_key_src: /etc/pki/cert/private/account.key
+        account_key_src: "/etc/nginx/cert/private/{{ domain_name}}.key"
         account_email: "{{ domain_name_account_email }}"
-        src: "/etc/pki/cert/csr/{{ domain_name }}.csr"
-        cert: "/etc/httpd/ssl/{{ domain_name }}.crt"
-        fullchain: "/etc/httpd/ssl/{{ domain_name }}fullchain.crt"
-        chain: "/etc/httpd/ssl/{{ domain_name }}-intermediate.crt"
+        src: "/etc/nginx/ssl/csr/{{ domain_name}}.csr"
+        cert: "/etc/nginx/ssl/{{ domain_name }}.crt"
+        fullchain: "/etc/nginx/ssl/{{ domain_name }}fullchain.crt"
+        chain: "/etc/nginx/ssl/{{ domain_name }}-intermediate.crt"
         challenge: dns-01
         acme_directory: https://acme-v02.api.letsencrypt.org/directory
         remaining_days: 60
@@ -113,9 +154,6 @@
             - "xsshunter"
             - "{{ postgres_password }}"
             - "xsshunter"
-
-    - import_role:
-        name: nginx
 
     - name: Move XSSHunter nginx into place
       shell: sudo cp default /etc/nginx/sites-enabled/default
