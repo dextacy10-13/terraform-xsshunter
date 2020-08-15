@@ -17,6 +17,7 @@
       - postgresql
       - postgresql-contrib
       - nginx
+    ssl_common_name: "*.{{ domain_name }}"
 
   tasks:
     - name: Install required packages for XSSunter
@@ -43,6 +44,12 @@
       become: true
       pip:
         name: boto3
+        executable: pip3
+
+    - name: Install pexpect
+      become: true
+      pip:
+        name: pexpect
         executable: pip3
 
     # enables set permissions to temp files to switch to posrgres user
@@ -79,25 +86,28 @@
         path: "/etc/nginx/ssl/csr/"
         state: directory
 
-    - name: Generate an OpenSSL private key with a different size (2048 bits)
+    - name: Generate an OpenSSL account key
+      openssl_privatekey:
+        path: "/etc/nginx/cert/private/account_{{ domain_name}}.key"
+
+    - name: Generate an OpenSSL private key
       openssl_privatekey:
         path: "/etc/nginx/cert/private/{{ domain_name}}.key"
-        size: 2048
 
     - name: Generate an OpenSSL Certificate Signing Request
       openssl_csr:
         path: "/etc/nginx/ssl/csr/{{ domain_name}}.csr"
         privatekey_path: "/etc/nginx/cert/private/{{ domain_name}}.key"
-        common_name: "{{ domain_name}}"
+        common_name: "{{ ssl_common_name }}"
 
     # this is a two stage process - create challenge and then fulfill challenge
     - name: "Create a challenge for {{ domain_name }} using a account key file."
       acme_certificate:
         acme_version: 2
-        account_key_src: "/etc/nginx/cert/private/{{ domain_name}}.key"
+        account_key_src: "/etc/nginx/cert/private/account_{{ domain_name}}.key"
         account_email: "{{ domain_name_account_email }}"
         src: "/etc/nginx/ssl/csr/{{ domain_name}}.csr"
-        cert: "/etc/nginx/ssl/{{ domain_name }}.crt"
+        dest: "/etc/nginx/ssl/{{ domain_name }}.crt"
         fullchain_dest: "/etc/nginx/ssl/{{ domain_name }}-fullchain.crt"
         challenge: dns-01
         acme_directory: https://acme-v02.api.letsencrypt.org/directory
@@ -108,21 +118,23 @@
 
     - name: Add challenge DNS record
       become: true
+      become_user: ubuntu
       route53:
          zone: "{{ domain_name }}"
-         record: "{{ domain_name_challenge.challenge_data[ domain_name ]['dns-01'].record }}"
+         record: "{{ domain_name_challenge.challenge_data[ ssl_common_name ]['dns-01'].record }}"
          type: TXT
          ttl: 60
          state: present
          wait: yes
+         overwrite: yes
          # Note: item.value is a list of TXT entries, and route53
          # requires every entry to be enclosed in quotes
-         value: "{{ domain_name_challenge.challenge_data[ domain_name ]['dns-01'].resource_value | regex_replace('^(.*)$', '\"\\1\"') }}"
+         value: "{{ domain_name_challenge.challenge_data[ ssl_common_name ]['dns-01'].resource_value | regex_replace('^(.*)$', '\"\\1\"') }}"
       when: domain_name_challenge is changed
 
     - name: Let the challenge be validated and retrieve the cert and intermediate certificate
       acme_certificate:
-        account_key_src: "/etc/nginx/cert/private/{{ domain_name}}.key"
+        account_key_src: "/etc/nginx/cert/private/account_{{ domain_name}}.key"
         account_email: "{{ domain_name_account_email }}"
         src: "/etc/nginx/ssl/csr/{{ domain_name}}.csr"
         cert: "/etc/nginx/ssl/{{ domain_name }}.crt"
@@ -131,6 +143,8 @@
         challenge: dns-01
         acme_directory: https://acme-v02.api.letsencrypt.org/directory
         remaining_days: 60
+        acme_version: 2
+        terms_agreed: yes
         data: "{{ domain_name_challenge }}"
       when: domain_name_challenge is changed
 
@@ -141,9 +155,12 @@
         update: yes
         force: yes
 
+    - name: Check directory contents
+      shell: ls -lah /srv/checkout
+
     - name: Generate XSSHunter config with multiple different responses
       expect:
-        command: /srv/checkout/xsshunter/generate_config.py
+        command: python3 /srv/checkout/generate_config.py
         responses:
           Question:
             - "{{ domain_name }}"
