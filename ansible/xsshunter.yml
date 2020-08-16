@@ -6,6 +6,7 @@
   vars:
     packages:
       - python3
+      - python3-pexpect
       - python-is-python3
       - python3-pip
       - python3-setuptools
@@ -46,11 +47,11 @@
         name: boto3
         executable: pip3
 
-    - name: Install pexpect
-      become: true
-      pip:
-        name: pexpect
-        executable: pip3
+#    - name: Install pexpect
+#      become: true
+#      pip:
+#        name: pexpect
+#        executable: pip3
 
     # enables set permissions to temp files to switch to posrgres user
     - name: install setfacl support
@@ -92,12 +93,12 @@
 
     - name: Generate an OpenSSL private key
       openssl_privatekey:
-        path: "/etc/nginx/cert/private/{{ domain_name}}.key"
+        path: "/etc/nginx/ssl/{{ domain_name}}.key"
 
     - name: Generate an OpenSSL Certificate Signing Request
       openssl_csr:
         path: "/etc/nginx/ssl/csr/{{ domain_name}}.csr"
-        privatekey_path: "/etc/nginx/cert/private/{{ domain_name}}.key"
+        privatekey_path: "/etc/nginx/ssl/{{ domain_name}}.key"
         common_name: "{{ ssl_common_name }}"
 
     # this is a two stage process - create challenge and then fulfill challenge
@@ -110,7 +111,7 @@
         dest: "/etc/nginx/ssl/{{ domain_name }}.crt"
         fullchain_dest: "/etc/nginx/ssl/{{ domain_name }}-fullchain.crt"
         challenge: dns-01
-        acme_directory: https://acme-v02.api.letsencrypt.org/directory
+        acme_directory: "{{ acme_url }}"
         terms_agreed: yes
         # Renew if the certificate is at least 30 days old
         remaining_days: 60
@@ -141,7 +142,7 @@
         fullchain: "/etc/nginx/ssl/{{ domain_name }}fullchain.crt"
         chain: "/etc/nginx/ssl/{{ domain_name }}-intermediate.crt"
         challenge: dns-01
-        acme_directory: https://acme-v02.api.letsencrypt.org/directory
+        acme_directory: "{{ acme_url }}"
         remaining_days: 60
         acme_version: 2
         terms_agreed: yes
@@ -150,7 +151,7 @@
 
     - name: Checkout XSSHunter from Repo
       git:
-        repo: https://github.com/mandatoryprogrammer/xsshunter
+        repo: https://github.com/dextacy10-13/xsshunter
         dest: /srv/checkout/
         update: yes
         force: yes
@@ -162,21 +163,14 @@
       expect:
         command: python3 /srv/checkout/generate_config.py
         responses:
-          Question:
-            - "{{ domain_name }}"
-            - "{{ mailgun_api_key }}"
-            - "{{ mailgun_domain }}"
-            - "{{ mail_from_email }}"
-            - "{{ abuse_contact_email }}"
-            - "xsshunter"
-            - "{{ postgres_password }}"
-            - "xsshunter"
+            "(.*)Domain?": "{{ domain_name }}"
+            "(.*)Mailgun API key(.*)": "{{ mailgun_api_key }}"
+            "(.*)Mailgun domain:(.*)": "{{ mailgun_domain }}"
+            "(.*)Sending email address(.*)": "{{ mail_from_email }}"
+            "(.*)Contact email(.*)": "{{ abuse_contact_email }}"
+            "(.*)Postgres username(.*)": "xsshunter"
+            "(.*)Postgres password(.*)": "{{ postgres_password }}"
+            "(.*)Postgres DB(.*)": "xsshunter"
 
     - name: Move XSSHunter nginx into place
-      shell: sudo cp default /etc/nginx/sites-enabled/default
-
-#    - name: import postfix-relay (poss want dovecot...)
-#    - name: import dovecot
-
-    #  from a baking point of view will install what software we can and config but will need
-    # image spun up with an IP to do DNS setup and then further config
+      shell: cat default;cp default /etc/nginx/sites-enabled/default;nginx -t
