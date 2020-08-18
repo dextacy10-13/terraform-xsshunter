@@ -47,11 +47,17 @@
         name: boto3
         executable: pip3
 
-#    - name: Install pexpect
-#      become: true
-#      pip:
-#        name: pexpect
-#        executable: pip3
+    - name: Install virtualenv
+      become: true
+      pip:
+        name: virtualenv
+        executable: pip3
+
+    - name: Install tornado
+      become: true
+      pip:
+        name: tornado
+        executable: pip3
 
     # enables set permissions to temp files to switch to posrgres user
     - name: install setfacl support
@@ -152,16 +158,13 @@
     - name: Checkout XSSHunter from Repo
       git:
         repo: https://github.com/dextacy10-13/xsshunter
-        dest: /srv/checkout/
+        dest: "{{ checkout_destination }}"
         update: yes
         force: yes
 
-    - name: Check directory contents
-      shell: ls -lah /srv/checkout
-
     - name: Generate XSSHunter config with multiple different responses
       expect:
-        command: python3 /srv/checkout/generate_config.py
+        command: "python3 {{ checkout_destination }}/generate_config.py"
         responses:
             "(.*)Domain?": "{{ domain_name }}"
             "(.*)Mailgun API key(.*)": "{{ mailgun_api_key }}"
@@ -174,3 +177,46 @@
 
     - name: Move XSSHunter nginx into place
       shell: cat default;cp default /etc/nginx/sites-enabled/default;nginx -t
+
+    - name: Move config.yaml into place
+      become: true
+      shell: "mv /home/ubuntu/config.yaml {{ checkout_destination }}/config.yaml"
+
+    - name: Activate API virtual env
+      shell: |
+          cd {{ checkout_destination }}/api/;
+          virtualenv --python=python3 env;
+          . env/bin/activate;
+          pip3 install tornado;
+          pip3 install dnspython;
+          pip3 install pyaml;
+          pip3 install -e git+git://github.com/tirkarthi/python-poster.git@master#egg=poster
+          pip3 install -e git+git://github.com/tirkarthi/unirest-python.git@master#egg=unirest
+          pip3 install -r requirements.txt;
+          deactivate
+
+    - name: Activate GUI virtual env
+      shell: |
+        cd {{ checkout_destination }}/gui/;
+        virtualenv --python=python3 env
+        . env/bin/activate
+        pip3 install tornado;
+        pip3 install dnspython;
+        pip install -r requirements.txt
+        deactivate
+
+    - name: ensure permissions API
+      file:
+        path: "{{ checkout_destination }}/api"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        recurse: yes
+
+    - name: ensure permissions Gui
+      file:
+        path: "{{ checkout_destination }}/gui"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        recurse: yes

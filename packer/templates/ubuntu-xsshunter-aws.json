@@ -38,7 +38,7 @@
       "extra_arguments": [
         "-vvv",
         "--extra-vars",
-        "ansible_python_interpreter=/usr/bin/python3 postgres_password={{user `postgres_password`}} domain_name={{user `domain_name`}} domain_name_account_email={{user `domain_name_account_email`}} mailgun_api_key={{user `mailgun_api_key`}} mailgun_domain={{user `mailgun_domain`}} mail_from_email={{user `mail_from_email`}} abuse_contact_email={{user `abuse_contact_email`}} acme_url={{user `acme_url`}}"
+        "ansible_python_interpreter=/usr/bin/python3 postgres_password={{user `postgres_password`}} domain_name={{user `domain_name`}} domain_name_account_email={{user `domain_name_account_email`}} mailgun_api_key={{user `mailgun_api_key`}} mailgun_domain={{user `mailgun_domain`}} mail_from_email={{user `mail_from_email`}} abuse_contact_email={{user `abuse_contact_email`}} acme_url={{user `acme_url`}} checkout_destination={{user `checkout_destination`}}"
       ],
       "playbook_file": "../../ansible/xsshunter.yml"
     }
